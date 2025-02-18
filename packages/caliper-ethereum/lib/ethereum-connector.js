@@ -99,12 +99,12 @@ class EthereumConnector extends ConnectorBase {
      * @return {object} Promise execution for all the contract creations.
      */
     async installSmartContract() {
-        let promises = [];
         let self = this;
         logger.info('Creating contracts...');
+
         for (const key of Object.keys(this.ethereumConfig.contracts)) {
             const contract = this.ethereumConfig.contracts[key];
-            const contractData = require(CaliperUtils.resolvePath(contract.path)); // TODO remove path property
+            const contractData = require(CaliperUtils.resolvePath(contract.path));
             const contractGas = contract.gas;
             const estimateGas = contract.estimateGas;
             let privacy;
@@ -113,26 +113,31 @@ class EthereumConnector extends ConnectorBase {
             }
 
             this.ethereumConfig.contracts[key].abi = contractData.abi;
-            promises.push(new Promise(async function(resolve, reject) {
+
+            try {
                 let contractInstance;
-                try {
-                    if (privacy) {
-                        contractInstance = await self.deployPrivateContract(contractData, privacy);
-                        logger.info(`Deployed private contract ${contractData.name} at ${contractInstance.options.address}`);
-                    } else {
-                        contractInstance = await self.deployContract(contractData);
-                        logger.info(`Deployed contract ${contractData.name} at ${contractInstance.options.address}`);
-                    }
-                } catch (err) {
-                    reject(err);
+                if (privacy) {
+                    contractInstance = await self.deployPrivateContract(contractData, privacy);
+                    logger.info(`Deployed private contract ${contractData.name} at ${contractInstance.options.address}`);
+                } else {
+                    contractInstance = await self.deployContract(contractData);
+                    logger.info(`Deployed contract ${contractData.name} at ${contractInstance.options.address}`);
                 }
+
+                // Store contract details
                 self.ethereumConfig.contracts[key].address = contractInstance.options.address;
                 self.ethereumConfig.contracts[key].gas = contractGas;
                 self.ethereumConfig.contracts[key].estimateGas = estimateGas;
-                resolve(contractInstance);
-            }));
+
+                // Single-threaded sleep (blocking only within this function)
+                logger.info(`Waiting 10 seconds before deploying the next contract...`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
+
+            } catch (err) {
+                logger.error(`Error deploying contract ${contractData.name}: ${err.message}`);
+                throw err;
+            }
         }
-        return Promise.all(promises);
     }
 
     /**
